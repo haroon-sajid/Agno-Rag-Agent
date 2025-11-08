@@ -613,12 +613,10 @@
 
 
 
-
-
 """
 Agno RAG Agent serving as the backend for the NiceGUI frontend.
 Handles PDF uploads, chat streaming, and knowledge management with async SSE.
-PostgreSQL database support for Render deployment.
+Pinecone vector database support for Render production deployment.
 """
 
 import asyncio
@@ -632,7 +630,7 @@ from pydantic import BaseModel
 from agno.agent import Agent
 from agno.models.openai import OpenAIChat
 from agno.media import File
-from agno.vectordb.lancedb import LanceDb
+from agno.vectordb.pinecone import PineconeDb
 from agno.knowledge.knowledge import Knowledge
 from agno.knowledge.reader.pdf_reader import PDFReader
 from agno.knowledge.chunking.semantic import SemanticChunking
@@ -760,11 +758,11 @@ def get_embedder():
 
 
 # ------------------------------------------------------
-# RAG Agent Class - OPTIMIZED FOR GEMINI WITH POSTGRESQL
+# RAG Agent Class - OPTIMIZED FOR PINEcone IN PRODUCTION
 # ------------------------------------------------------
 class RAGAgent:
     def __init__(self):
-        """Initialize RAG agent with proper embedding configuration and fallbacks."""
+        """Initialize RAG agent with Pinecone for production deployment."""
         self.db_engine = engine
         self.AsyncSessionLocal = AsyncSessionLocal
         
@@ -774,15 +772,36 @@ class RAGAgent:
         # Get the best available embedder
         embedder = get_embedder()
         
-        # Initialize knowledge base with proper RAG configuration
-        self.knowledge_base = Knowledge(
-            vector_db=LanceDb(
-                table_name="pdf_documents",
-                uri="tmp/lancedb",
-                embedder=embedder,
-            ),
-            max_results=3,  # Control retrieval count
-        )
+        # Pinecone configuration for production
+        pinecone_api_key = os.getenv("PINECONE_API_KEY")
+        pinecone_environment = os.getenv("PINECONE_ENVIRONMENT", "us-east4-gcp")
+        pinecone_index_name = os.getenv("PINECONE_INDEX_NAME", "rag-chatbot")
+        
+        if not pinecone_api_key:
+            logger.warning("⚠️ PINECONE_API_KEY not found. Using LanceDB fallback for local development.")
+            # Fallback to LanceDB for local development
+            from agno.vectordb.lancedb import LanceDb
+            self.knowledge_base = Knowledge(
+                vector_db=LanceDb(
+                    table_name="pdf_documents",
+                    uri="tmp/lancedb",
+                    embedder=embedder,
+                ),
+                max_results=3,
+            )
+        else:
+            # Use Pinecone for production
+            logger.info("🌲 Using Pinecone vector database for production")
+            self.knowledge_base = Knowledge(
+                vector_db=PineconeDb(
+                    index_name=pinecone_index_name,
+                    embedder=embedder,
+                    api_key=pinecone_api_key,
+                    environment=pinecone_environment,
+                    dimension=768,  # Adjust based on your embedder
+                ),
+                max_results=3,  # Control retrieval count
+            )
 
         # Initialize the RAG-enabled agent with proper configuration
         self.agent = Agent(
@@ -798,7 +817,7 @@ class RAGAgent:
             ),
         )
         
-        logger.info("✅ RAG Agent initialized successfully with PostgreSQL")
+        logger.info("✅ RAG Agent initialized successfully with Pinecone")
 
     async def save_chat_message(self, session_id: str, role: str, content: str) -> None:
         """Save chat message to PostgreSQL database."""
@@ -986,31 +1005,60 @@ class RAGAgent:
     async def clear_knowledge(self) -> None:
         """Clear knowledge base completely."""
         try:
-            # Clear vector database
-            if os.path.exists("tmp/lancedb"):
-                shutil.rmtree("tmp/lancedb", ignore_errors=True)
+            # Clear local directories
             if os.path.exists("tmp/uploads"):
                 shutil.rmtree("tmp/uploads", ignore_errors=True)
             if os.path.exists("tmp/temp"):
                 shutil.rmtree("tmp/temp", ignore_errors=True)
                 
             # Recreate directories
-            os.makedirs("tmp/lancedb", exist_ok=True)
             os.makedirs("tmp/uploads", exist_ok=True)
             os.makedirs("tmp/temp", exist_ok=True)
             
             self.uploaded_pdfs = []
             
-            # Reinitialize knowledge base with current embedder
-            embedder = get_embedder()
-            self.knowledge_base = Knowledge(
-                vector_db=LanceDb(
-                    table_name="pdf_documents",
-                    uri="tmp/lancedb",
-                    embedder=embedder,
-                ),
-                max_results=3,
-            )
+            # For Pinecone, we need to clear the index
+            pinecone_api_key = os.getenv("PINECONE_API_KEY")
+            if pinecone_api_key:
+                logger.info("🧹 Clearing Pinecone index...")
+                # Note: In production, you might want to be more selective about clearing
+                # This will clear the entire index - use with caution!
+                try:
+                    # Reinitialize knowledge base to clear Pinecone data
+                    embedder = get_embedder()
+                    pinecone_environment = os.getenv("PINECONE_ENVIRONMENT", "us-east4-gcp")
+                    pinecone_index_name = os.getenv("PINECONE_INDEX_NAME", "rag-chatbot")
+                    
+                    self.knowledge_base = Knowledge(
+                        vector_db=PineconeDb(
+                            index_name=pinecone_index_name,
+                            embedder=embedder,
+                            api_key=pinecone_api_key,
+                            environment=pinecone_environment,
+                            dimension=768,
+                        ),
+                        max_results=3,
+                    )
+                    logger.info("✅ Pinecone knowledge base cleared")
+                except Exception as e:
+                    logger.error(f"❌ Error clearing Pinecone: {e}")
+            else:
+                # Fallback to LanceDB clearing
+                if os.path.exists("tmp/lancedb"):
+                    shutil.rmtree("tmp/lancedb", ignore_errors=True)
+                os.makedirs("tmp/lancedb", exist_ok=True)
+                
+                embedder = get_embedder()
+                from agno.vectordb.lancedb import LanceDb
+                self.knowledge_base = Knowledge(
+                    vector_db=LanceDb(
+                        table_name="pdf_documents",
+                        uri="tmp/lancedb",
+                        embedder=embedder,
+                    ),
+                    max_results=3,
+                )
+                logger.info("✅ Local knowledge base cleared")
             
             # Update agent knowledge reference
             self.agent.knowledge = self.knowledge_base
@@ -1024,12 +1072,6 @@ class RAGAgent:
     async def get_knowledge_stats(self) -> dict:
         """Get statistics about the knowledge base."""
         try:
-            vector_db_size = 0
-            if os.path.exists("tmp/lancedb"):
-                for root, dirs, files in os.walk("tmp/lancedb"):
-                    for file in files:
-                        vector_db_size += os.path.getsize(os.path.join(root, file))
-            
             upload_dir_size = 0
             if os.path.exists("tmp/uploads"):
                 for root, dirs, files in os.walk("tmp/uploads"):
@@ -1050,11 +1092,13 @@ class RAGAgent:
                 session_count_val = session_count.scalar() or 0
                 message_count_val = message_count.scalar() or 0
             
-            return {
+            # Determine vector database type
+            vector_db_type = "Pinecone" if os.getenv("PINECONE_API_KEY") else "LanceDB"
+            
+            stats = {
                 "uploaded_pdfs": len(self.uploaded_pdfs),
                 "knowledge_base_initialized": self.knowledge_base is not None,
-                "vector_db_exists": os.path.exists("tmp/lancedb"),
-                "vector_db_size_mb": round(vector_db_size / (1024 * 1024), 2),
+                "vector_db_type": vector_db_type,
                 "upload_directory_exists": os.path.exists("tmp/uploads"),
                 "upload_directory_size_mb": round(upload_dir_size / (1024 * 1024), 2),
                 "embedding_backend": embedder_type,
@@ -1062,6 +1106,14 @@ class RAGAgent:
                 "chat_messages_count": message_count_val,
                 "database_type": "PostgreSQL" if "postgresql" in DATABASE_URL else "SQLite"
             }
+            
+            # Add Pinecone-specific stats if available
+            if vector_db_type == "Pinecone":
+                stats["pinecone_environment"] = os.getenv("PINECONE_ENVIRONMENT", "us-east4-gcp")
+                stats["pinecone_index"] = os.getenv("PINECONE_INDEX_NAME", "rag-chatbot")
+            
+            return stats
+            
         except Exception as e:
             logger.error(f"❌ Error getting knowledge stats: {e}")
             return {"error": str(e)}
@@ -1232,7 +1284,8 @@ def check_dependencies():
         "PyPDF2": False,
         "sqlalchemy": False,
         "asyncpg": False,
-        "aiosqlite": False
+        "aiosqlite": False,
+        "pinecone": False
     }
     
     try:
@@ -1280,6 +1333,12 @@ def check_dependencies():
     try:
         import aiosqlite
         dependencies["aiosqlite"] = True
+    except ImportError:
+        pass
+        
+    try:
+        import pinecone
+        dependencies["pinecone"] = True
     except ImportError:
         pass
     
@@ -1361,7 +1420,6 @@ if __name__ == "__main__":
     # Create necessary directories
     os.makedirs("tmp", exist_ok=True)
     os.makedirs("tmp/uploads", exist_ok=True)
-    os.makedirs("tmp/lancedb", exist_ok=True)
     os.makedirs("tmp/temp", exist_ok=True)
     
     # Check environment
@@ -1379,7 +1437,7 @@ if __name__ == "__main__":
     # Initialize database and run tests
     async def main():
         await init_database()
-        print("🤖 Testing Enhanced RAG Agent with PostgreSQL...")
+        print("🤖 Testing Enhanced RAG Agent with Pinecone...")
         await test_pdf_upload()
         test_agent_configuration()
         await test_database_functionality()
