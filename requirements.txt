@@ -9,8 +9,7 @@ pytest
 pytest-asyncio
 pytest-check
 httpx
-pypdf  # Required by Agno
-pypdf2  # Your existing code might use this
+pypdf
 google-generativeai
 openai
 fastembed
@@ -19,4 +18,4 @@ psycopg2-binary
 sqlalchemy
 asyncpg
 aiosqlite
-pinecone-client
+pinecone  
