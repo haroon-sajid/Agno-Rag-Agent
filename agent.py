@@ -630,7 +630,7 @@ from pydantic import BaseModel
 from agno.agent import Agent
 from agno.models.openai import OpenAIChat
 from agno.media import File
-from agno.vectordb.pinecone import PineconeDb
+from agno.vectordb.pineconedb import PineconeDb
 from agno.knowledge.knowledge import Knowledge
 from agno.knowledge.reader.pdf_reader import PDFReader
 from agno.knowledge.chunking.semantic import SemanticChunking
