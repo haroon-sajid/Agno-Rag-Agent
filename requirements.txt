@@ -1,5 +1,11 @@
 fastapi
 uvicorn[standard]
+
+psycopg2-binary
+asyncpg
+sqlalchemy
+alembic
+
 nicegui
 agno
 python-dotenv

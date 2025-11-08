@@ -3,8 +3,18 @@ services:
     name: rag-chatbot-backend
     env: python
     plan: free
-    buildCommand: pip install -r requirements.txt
+    buildCommand: |
+      pip install -r requirements.txt
+      python -c "from main import init_db; import asyncio; asyncio.run(init_db())"
     startCommand: uvicorn main:app --host 0.0.0.0 --port 8000
     envVars:
       - key: PYTHON_VERSION
-        value: 3.13.9
+        value: 3.13.0
+      - fromGroup: rag-chatbot-database
+
+databases:
+  - name: rag-chatbot-database
+    plan: free
+    databaseName: rag_chatbot
+    user: rag_chatbot_user
+       
