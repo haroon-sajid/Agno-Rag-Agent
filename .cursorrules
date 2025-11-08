@@ -1,0 +1,11 @@
+# Cursor Rules for RAG Chatbot Project
+- Focus on simple, maintainable code that actually runs
+- Prefer Agno built-ins over custom implementations when possible
+- Write tests for all new functionality using pytest
+- Use modern Python typing (list[str], str | None)
+- Keep async code non-blocking and properly handled
+- Validate all file uploads and error conditions
+- Document why custom abstractions are needed over library features
+- Ensure streaming works end-to-end before adding features
+- Use Pydantic models for all structured data
+- Maintain clear separation between FastAPI backend and NiceGUI UI
