@@ -803,21 +803,25 @@ class RAGAgent:
                 max_results=3,  # Control retrieval count
             )
 
-        # Initialize the RAG-enabled agent with proper configuration
-        self.agent = Agent(
-            model=OpenAIChat(id="gpt-4o-mini", api_key=os.getenv("OPENAI_API_KEY")),
-            knowledge=self.knowledge_base,
-            search_knowledge=True,  # Enable RAG retrieval
-            add_history_to_context=True,
-            markdown=True,
-            instructions=(
-                "You are a factual and context-aware assistant. "
-                "Use the uploaded document knowledge when relevant and keep responses accurate. "
-                "If the information is not in the provided documents, say so."
-            ),
-        )
-        
-        logger.info("✅ RAG Agent initialized successfully with Pinecone")
+            # Initialize the RAG-enabled agent with proper configuration
+            self.agent = Agent(
+                model=OpenAIChat(
+                    id="gpt-4o-mini", 
+                    api_key=os.getenv("OPENAI_API_KEY"),
+                    base_url=os.getenv("OPENAI_BASE_URL", None)  # Add this for flexibility
+                ),
+                knowledge=self.knowledge_base,
+                search_knowledge=True,  # Enable RAG retrieval
+                add_history_to_context=True,
+                markdown=True,
+                instructions=(
+                    "You are a factual and context-aware assistant. "
+                    "Use the uploaded document knowledge when relevant and keep responses accurate. "
+                    "If the information is not in the provided documents, say so."
+                ),
+            )
+
+            logger.info("✅ RAG Agent initialized successfully with Pinecone")
 
     async def save_chat_message(self, session_id: str, role: str, content: str) -> None:
         """Save chat message to PostgreSQL database."""
