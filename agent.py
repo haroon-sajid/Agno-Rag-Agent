@@ -611,8 +611,6 @@
 
 
 
-
-
 """
 Agno RAG Agent serving as the backend for the NiceGUI frontend.
 Handles PDF uploads, chat streaming, and knowledge management with async SSE.
@@ -777,20 +775,7 @@ class RAGAgent:
         pinecone_environment = os.getenv("PINECONE_ENVIRONMENT", "us-east4-gcp")
         pinecone_index_name = os.getenv("PINECONE_INDEX_NAME", "rag-chatbot")
         
-        if not pinecone_api_key:
-            logger.warning("⚠️ PINECONE_API_KEY not found. Using LanceDB fallback for local development.")
-            # Fallback to LanceDB for local development
-            from agno.vectordb.lancedb import LanceDb
-            self.knowledge_base = Knowledge(
-                vector_db=LanceDb(
-                    table_name="pdf_documents",
-                    uri="tmp/lancedb",
-                    embedder=embedder,
-                ),
-                max_results=3,
-            )
-        else:
-            # Use Pinecone for production
+        if pinecone_api_key and pinecone_environment:
             logger.info("🌲 Using Pinecone vector database for production")
             self.knowledge_base = Knowledge(
                 vector_db=PineconeDb(
@@ -802,26 +787,38 @@ class RAGAgent:
                 ),
                 max_results=3,  # Control retrieval count
             )
-
-            # Initialize the RAG-enabled agent with proper configuration
-            self.agent = Agent(
-                model=OpenAIChat(
-                    id="gpt-4o-mini", 
-                    api_key=os.getenv("OPENAI_API_KEY"),
-                    base_url=os.getenv("OPENAI_BASE_URL", None)  # Add this for flexibility
+        else:
+            logger.warning("⚠️ Pinecone not configured. Using LanceDB fallback for local development.")
+            # Fallback to LanceDB for local development
+            from agno.vectordb.lancedb import LanceDb
+            self.knowledge_base = Knowledge(
+                vector_db=LanceDb(
+                    table_name="pdf_documents",
+                    uri="tmp/lancedb",
+                    embedder=embedder,
                 ),
-                knowledge=self.knowledge_base,
-                search_knowledge=True,  # Enable RAG retrieval
-                add_history_to_context=True,
-                markdown=True,
-                instructions=(
-                    "You are a factual and context-aware assistant. "
-                    "Use the uploaded document knowledge when relevant and keep responses accurate. "
-                    "If the information is not in the provided documents, say so."
-                ),
+                max_results=3,
             )
 
-            logger.info("✅ RAG Agent initialized successfully with Pinecone")
+        # Initialize the RAG-enabled agent with proper configuration
+        self.agent = Agent(
+            model=OpenAIChat(
+                id="gpt-4o-mini", 
+                api_key=os.getenv("OPENAI_API_KEY"),
+                base_url=os.getenv("OPENAI_BASE_URL", None)  # Add this for flexibility
+            ),
+            knowledge=self.knowledge_base,
+            search_knowledge=True,  # Enable RAG retrieval
+            add_history_to_context=True,
+            markdown=True,
+            instructions=(
+                "You are a factual and context-aware assistant. "
+                "Use the uploaded document knowledge when relevant and keep responses accurate. "
+                "If the information is not in the provided documents, say so."
+            ),
+        )
+
+        logger.info("✅ RAG Agent initialized successfully")
 
     async def save_chat_message(self, session_id: str, role: str, content: str) -> None:
         """Save chat message to PostgreSQL database."""

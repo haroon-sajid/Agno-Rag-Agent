@@ -1,4 +1,3 @@
-
 """
 FastAPI backend serving as a bridge between NiceGUI frontend and Agno RAG agent.
 Handles PDF uploads, chat streaming, and knowledge management with async SSE.
@@ -245,3 +244,8 @@ app.include_router(api_router)
 @app.get("/")
 async def root():
     return {"message": "RAG Chatbot API is running", "version": "1.0.0"}
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
