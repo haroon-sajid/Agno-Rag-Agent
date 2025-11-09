@@ -11,7 +11,7 @@ pytest-asyncio
 pytest-check
 pypdf
 google-generativeai
-openai
+openaiopenai==1.12.0
 fastembed
 sentence-transformers
 psycopg2-binary
@@ -19,5 +19,5 @@ sqlalchemy
 asyncpg
 aiosqlite
 pinecone-client
-pinecone
+pinecone-client==5.4.2
 
