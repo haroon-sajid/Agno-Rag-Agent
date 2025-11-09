@@ -18,5 +18,5 @@ psycopg2-binary
 sqlalchemy
 asyncpg
 aiosqlite
-pinecone-client
+pinecone[asyncio]
 PyPDF2
